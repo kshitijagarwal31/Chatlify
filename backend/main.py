@@ -1,8 +1,9 @@
 from fastapi import FastAPI
+from routes import router
+from database import engine, Base
 
 app = FastAPI()
 
+app.include_router(router)
 
-@app.get("/")
-async def root():
-    return {"message": "Chatlify API is running."}
+
