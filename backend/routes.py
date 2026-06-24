@@ -1,10 +1,13 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 from schemas import UserRegister, UserLogin, MessageSchema
 from database import SessionLocal
 from models import User, Message
 from config import pwd_context
 from auth import create_access_token, get_current_user
+from ws_manager import manager
+from fastapi.security import OAuth2PasswordRequestForm
+
 
 router = APIRouter()
 
@@ -37,18 +40,18 @@ async def register(data: UserRegister):
 
 
 @router.post("/login")
-async def login(data: UserLogin):
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     async with SessionLocal() as db:
         
         result = await db.execute(
-            select(User).where(User.username == data.username)
+            select(User).where(User.username == form_data.username)
         )
         user = result.scalar_one_or_none()
         
         if not user:
             raise HTTPException(status_code=400, detail="Username not found")
         
-        if not pwd_context.verify(data.password, user.password):
+        if not pwd_context.verify(form_data.password, user.password):
             raise HTTPException(status_code=400, detail="Incorrect password")
         
         token = create_access_token({"sub": str(user.id)})
@@ -61,6 +64,30 @@ async def login(data: UserLogin):
 
 
 
+@router.websocket("/ws/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: int):
+    await manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            await manager.broadcast(f"User {user_id}: {data}")
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        await manager.broadcast(f"User {user_id} left the chat")
+
+
+
 @router.post("/message")
 async def send_message(data: MessageSchema, current_user = Depends(get_current_user)):
-    return {"message": "Message sent successfully."}
+    async with SessionLocal() as db:
+        
+        new_message = Message(
+            sender_id = current_user.id,
+            content = data.content
+        )
+        db.add(new_message)
+        await db.commit()
+        
+        await manager.broadcast(f"{current_user.name}: {data.content}")
+        
+        return {"message": "Message sent successfully"}
