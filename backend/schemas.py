@@ -12,5 +12,4 @@ class UserLogin(BaseModel):
     
 
 class MessageSchema(BaseModel):
-    reveiver_id: int
     content: str
