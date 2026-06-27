@@ -6,7 +6,6 @@ from models import User, Message
 from config import pwd_context
 from auth import create_access_token, get_current_user
 from ws_manager import manager
-from fastapi.security import OAuth2PasswordRequestForm
 
 
 router = APIRouter()
@@ -40,18 +39,18 @@ async def register(data: UserRegister):
 
 
 @router.post("/login")
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+async def login(data: UserLogin):
     async with SessionLocal() as db:
         
         result = await db.execute(
-            select(User).where(User.username == form_data.username)
+            select(User).where(User.username == data.username)
         )
         user = result.scalar_one_or_none()
         
         if not user:
             raise HTTPException(status_code=400, detail="Username not found")
         
-        if not pwd_context.verify(form_data.password, user.password):
+        if not pwd_context.verify(data.password, user.password):
             raise HTTPException(status_code=400, detail="Incorrect password")
         
         token = create_access_token({"sub": str(user.id)})
@@ -59,7 +58,8 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         return {
             "access_token": token,
             "token_type": "bearer",
-            "message": "User login successfully"
+            "message": "User login successfully",
+            "user_id": user.id
             }
 
 
